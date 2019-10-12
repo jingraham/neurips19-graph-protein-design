@@ -16,10 +16,8 @@ from utils import *
 args, device, model = setup_cli_model()
 
 
-# DEBUG load the checkpoint
-# checkpoint_path = 'log/19Mar04_0533PM_h256_suspicious/checkpoints/epoch18_step21960.pt'
-# checkpoint_path = 'log/19Mar04_1118PM/checkpoints/epoch50_step60000.pt'
-# model.load_state_dict(torch.load(checkpoint_path, map_location='cpu'))
+# Initial datasets @ (still to be finalized for camera-ready)
+# https://www.dropbox.com/s/8mh256dkymevbbb/downloads_v0.zip?dl=0
 
 optimizer = noam_opt.get_std_opt(model.parameters(), args.hidden)
 criterion = torch.nn.NLLLoss(reduction='none')
