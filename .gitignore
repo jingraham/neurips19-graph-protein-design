@@ -1,0 +1,13 @@
+.DS_Store
+
+*.mmtf.gz
+*.pdb
+*.spin2
+
+*.json
+*.jsonl
+*.pt
+
+
+
+__pycache__/

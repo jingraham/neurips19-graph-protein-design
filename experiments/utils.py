@@ -12,7 +12,6 @@ from torch.utils.data.dataset import random_split, Subset
 
 # Library code
 sys.path.insert(0, '..')
-from struct2seq import self_attention
 from struct2seq import *
 
 from argparse import ArgumentParser
@@ -23,18 +22,20 @@ def get_args():
     parser.add_argument('--hidden', type=int, default=128, help='number of hidden dimensions')
     parser.add_argument('--k_neighbors', type=int, default=30, help='Neighborhood size for k-NN')
     parser.add_argument('--vocab_size', type=int, default=20, help='Alphabet size')
-    parser.add_argument('--features', type=str, default='hbonds', help='Enrich with alignments')
+    parser.add_argument('--features', type=str, default='full', help='Protein graph features')
+    parser.add_argument('--model_type', type=str, default='structure', help='Enrich with alignments')
+    parser.add_argument('--mpnn', action='store_true', help='Use MPNN updates instead of attention')
 
+    parser.add_argument('--restore', type=str, default='', help='Checkpoint file for restoration')
     parser.add_argument('--name', type=str, default='', help='Experiment name for logging')
-    parser.add_argument('--file_data', type=str, default='../../../dataset/chain_set.json.txt', help='input chain file')
-    parser.add_argument('--file_splits', type=str, default='../../../dataset/chain_set_splits.json', help='input chain file')
+    parser.add_argument('--file_data', type=str, default='../data/cath/chain_set.jsonl', help='input chain file')
+    parser.add_argument('--file_splits', type=str, default='../data/cath/chain_set_splits.json', help='input chain file')
     parser.add_argument('--batch_tokens', type=int, default=2500, help='batch size')
     parser.add_argument('--epochs', type=int, default=100, help='number of epochs')
     parser.add_argument('--seed', type=int, default=1111, help='random seed for reproducibility')
     parser.add_argument('--cuda', action='store_true', help='whether to use CUDA for computation')
     parser.add_argument('--augment', action='store_true', help='Enrich with alignments')
     
-
     parser.add_argument('--shuffle', type=float, default=0., help='Shuffle for training a background model')
     parser.add_argument('--dropout', type=float, default=0.1, help='Dropout rate')
     parser.add_argument('--smoothing', type=float, default=0.1, help='Label smoothing rate')
@@ -57,15 +58,29 @@ def setup_device_rng(args):
 
 def setup_model(hyperparams, device):
     # Build the model
-    model = struct2seq.Struct2Seq(
-        num_letters=hyperparams['vocab_size'], 
-        node_features=hyperparams['hidden'],
-        edge_features=hyperparams['hidden'], 
-        hidden_dim=hyperparams['hidden'],
-        k_neighbors=hyperparams['k_neighbors'],
-        protein_features=hyperparams['features'],
-        dropout=hyperparams['dropout']
-    ).to(device)
+    if hyperparams['model_type'] == 'structure':
+        model = struct2seq.Struct2Seq(
+            num_letters=hyperparams['vocab_size'], 
+            node_features=hyperparams['hidden'],
+            edge_features=hyperparams['hidden'], 
+            hidden_dim=hyperparams['hidden'],
+            k_neighbors=hyperparams['k_neighbors'],
+            protein_features=hyperparams['features'],
+            dropout=hyperparams['dropout'],
+            use_mpnn=hyperparams['mpnn']
+        ).to(device)
+    elif hyperparams['model_type'] == 'sequence':
+        model = seq_model.SequenceModel(
+            num_letters=hyperparams['vocab_size'],
+            hidden_dim=hyperparams['hidden'],
+            top_k=hyperparams['k_neighbors']
+        ).to(device)
+    elif hyperparams['model_type'] == 'rnn':
+        model = seq_model.LanguageRNN(
+            num_letters=hyperparams['vocab_size'],
+            hidden_dim=hyperparams['hidden']
+        ).to(device)
+
     print('Number of parameters: {}'.format(sum([p.numel() for p in model.parameters()])))
     return model
 
@@ -73,11 +88,15 @@ def setup_cli_model():
     args = get_args()
     device = setup_device_rng(args)
     model = setup_model(vars(args), device)
+    if args.restore is not '':
+        load_checkpoint(args.restore, model)
     return args, device, model
 
 def load_checkpoint(checkpoint_path, model):
+    print('Loading checkpoint from {}'.format(checkpoint_path))
     state_dicts = torch.load(checkpoint_path, map_location='cpu')
     model.load_state_dict(state_dicts['model_state_dict'])
+    print('\tEpoch {}'.format(state_dicts['epoch']))
     return
 
 def featurize(batch, device, shuffle_fraction=0.):

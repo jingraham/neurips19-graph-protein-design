@@ -5,7 +5,7 @@ import json, time, copy
 import random
 
 class StructureDataset():
-    def __init__(self, json_txt_file, verbose=True, truncate=None, max_length=100,
+    def __init__(self, jsonl_file, verbose=True, truncate=None, max_length=100,
         alphabet='ACDEFGHIKLMNPQRSTVWY'):
         alphabet_set = set([a for a in alphabet])
         discard_count = {
@@ -13,16 +13,15 @@ class StructureDataset():
             'too_long': 0,
         }
 
-        with open(json_txt_file) as f:
+        with open(jsonl_file) as f:
             self.data = []
 
             lines = f.readlines()
             start = time.time()
             for i, line in enumerate(lines):
-                name, entry = line.split('\t')
-                entry = json.loads(entry)
-                entry['name'] = name
+                entry = json.loads(line)
                 seq = entry['seq']
+                name = entry['name']
 
                 # Convert raw coords to np arrays
                 for key, val in entry['coords'].items():
@@ -54,8 +53,9 @@ class StructureDataset():
     def __getitem__(self, idx):
         return self.data[idx]
 
+
 class SequenceDataset():
-    def __init__(self, json_txt_file, verbose=True, truncate=None, max_length=100,
+    def __init__(self, jsonl_file, verbose=True, truncate=None, max_length=100,
         alphabet='ACDEFGHIKLMNPQRSTVWY'):
         alphabet_set = set([a for a in alphabet])
         discard_count = {
@@ -63,7 +63,7 @@ class SequenceDataset():
             'too_long': 0,
         }
 
-        with open(json_txt_file) as f:
+        with open(jsonl_file) as f:
             self.data = []
             start = time.time()
             for i, line in enumerate(f):
@@ -96,38 +96,6 @@ class SequenceDataset():
     def __getitem__(self, idx):
         return self.data[idx]
 
-
-class AlignmentDataset():
-    def __init__(self, jsonl_file, verbose=True, alphabet='ACDEFGHIKLMNPQRSTVWY'):
-        self.data = {}
-        self.alphabet = alphabet
-        with open(jsonl_file) as f:
-            start = time.time()
-            for i, line in enumerate(f):
-                json_dict = json.loads(line)
-                num_seqs = len(json_dict['ali'])
-                self.data[json_dict['name']] = json_dict['ali']
-
-                if verbose and (i + 1) % 1000 == 0:
-                    elapsed = time.time() - start
-                    print('{} alignments ({} loaded) in {:.1f} s'.format(len(self.data), i+1, elapsed))
-
-    def augment(self, batch):
-        batch_augment = copy.deepcopy(batch)
-
-        for b1, b2 in zip(batch, batch_augment):
-            name = b1['name']
-            if name in self.data:
-                seq = b1['seq']
-                seq_new = random.choice(self.data[name])
-                b2['seq'] = ''.join([c2 if c2 in self.alphabet else c1 for c1, c2 in zip(seq, seq_new)])
-
-        # for b1, b2 in zip(batch, batch_augment):
-        #     s1, s2 = b1['seq'], b2['seq']
-        #     print(b1['seq'])
-        #     print(''.join(['|' if c1==c2 else ' ' for c1,c2 in zip(s1,s2)]))
-        #     print(b2['seq'])
-        return batch_augment
 
 class StructureLoader():
     def __init__(self, dataset, batch_size=100, shuffle=True,

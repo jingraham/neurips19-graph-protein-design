@@ -1,5 +1,6 @@
 from __future__ import print_function
-import json, time, os, sys
+import json, time, os, sys, glob
+import shutil
 
 import numpy as np
 import torch
@@ -12,19 +13,11 @@ sys.path.insert(0, '..')
 from struct2seq import *
 from utils import *
 
-
 args, device, model = setup_cli_model()
-
-
-# Initial datasets @ (still to be finalized for camera-ready)
-# https://www.dropbox.com/s/8mh256dkymevbbb/downloads_v0.zip?dl=0
-
 optimizer = noam_opt.get_std_opt(model.parameters(), args.hidden)
 criterion = torch.nn.NLLLoss(reduction='none')
 
 # Load the dataset
-if args.augment:
-    alignments = data.AlignmentDataset(args.file_alignments)
 dataset = data.StructureDataset(args.file_data, truncate=None, max_length=500)
 
 # Split the dataset
@@ -44,9 +37,10 @@ loader_train, loader_validation, loader_test = [data.StructureLoader(
 print('Training:{}, Validation:{}, Test:{}'.format(len(train_set),len(validation_set),len(test_set)))
 
 # Build basepath for experiment
-base_folder = time.strftime('log/%y%b%d_%I%M%p/', time.localtime())
 if args.name != '':
     base_folder = 'log/' + args.name + '/'
+else:
+    base_folder = time.strftime('log/%y%b%d_%I%M%p/', time.localtime())
 if not os.path.exists(base_folder):
     os.makedirs(base_folder)
 subfolders = ['checkpoints', 'plots']
@@ -62,6 +56,8 @@ with open(base_folder + 'args.json', 'w') as f:
     json.dump(vars(args), f)
 
 start_train = time.time()
+epoch_losses_train, epoch_losses_valid = [], []
+epoch_checkpoints = []
 total_step = 0
 for e in range(args.epochs):
     # Training epoch
@@ -148,9 +144,46 @@ for e in range(args.epochs):
         f.write('{}\t{}\t{}\n'.format(e, train_perplexity, validation_perplexity))
 
     # Save the model
+    checkpoint_filename = base_folder + 'checkpoints/epoch{}_step{}.pt'.format(e+1, total_step)
     torch.save({
         'epoch': e,
         'hyperparams': vars(args),
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.optimizer.state_dict()
-    }, base_folder + 'checkpoints/epoch{}_step{}.pt'.format(e+1, total_step))
+    }, checkpoint_filename)
+
+    epoch_losses_valid.append(validation_perplexity)
+    epoch_losses_train.append(train_perplexity)
+    epoch_checkpoints.append(checkpoint_filename)
+
+# Determine best model via early stopping on validation
+best_model_idx = np.argmin(epoch_losses_valid).item()
+best_checkpoint = epoch_checkpoints[best_model_idx]
+train_perplexity = epoch_losses_train[best_model_idx]
+validation_perplexity = epoch_losses_valid[best_model_idx]
+best_checkpoint_copy = base_folder + 'best_checkpoint_epoch{}.pt'.format(best_model_idx + 1)
+shutil.copy(best_checkpoint, best_checkpoint_copy)
+load_checkpoint(best_checkpoint_copy, model)
+
+
+# Test epoch
+model.eval()
+with torch.no_grad():
+    test_sum, test_weights = 0., 0.
+    for _, batch in enumerate(loader_test):
+        X, S, mask, lengths = featurize(batch, device)
+        log_probs = model(X, S, lengths, mask)
+        loss, loss_av = loss_nll(S, log_probs, mask)
+        # Accumulate
+        test_sum += torch.sum(loss * mask).cpu().data.numpy()
+        test_weights += torch.sum(mask).cpu().data.numpy()
+
+test_loss = test_sum / test_weights
+test_perplexity = np.exp(test_loss)
+print('Perplexity\tTest:{}'.format(test_perplexity))
+
+with open(base_folder + 'results.txt', 'w') as f:
+    f.write('Best epoch: {}\nPerplexities:\n\tTrain: {}\n\tValidation: {}\n\tTest: {}'.format(
+        best_model_idx+1, train_perplexity, validation_perplexity, test_perplexity
+    ))
+

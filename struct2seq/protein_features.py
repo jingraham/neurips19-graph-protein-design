@@ -24,7 +24,7 @@ class PositionalEncodings(nn.Module):
         N_neighbors = E_idx.size(2)
         ii = torch.arange(N_nodes, dtype=torch.float32).view((1, -1, 1))
         d = (E_idx.float() - ii).unsqueeze(-1)
-        # Original Transformer
+        # Original Transformer frequencies
         frequency = torch.exp(
             torch.arange(0, self.num_embeddings, 2, dtype=torch.float32)
             * -(np.log(10000.0) / self.num_embeddings)
@@ -367,8 +367,8 @@ class ProteinFeatures(nn.Module):
             neighbor_HB = self.dropout(neighbor_HB)
             # Pack
             V = mask.unsqueeze(-1) * torch.ones_like(AD_features)
-            neighbor_C = neighbor_C.expand(-1,-1,-1, self.num_positional_embeddings / 2)
-            neighbor_HB = neighbor_HB.expand(-1,-1,-1, self.num_positional_embeddings / 2)
+            neighbor_C = neighbor_C.expand(-1,-1,-1, int(self.num_positional_embeddings / 2))
+            neighbor_HB = neighbor_HB.expand(-1,-1,-1, int(self.num_positional_embeddings / 2))
             E = torch.cat((E_positional, neighbor_C, neighbor_HB), -1)
         elif self.features_type == 'full':
             # Full backbone angles
