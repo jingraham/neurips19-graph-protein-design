@@ -83,9 +83,9 @@ def _scores(S, log_probs, mask):
     scores = torch.sum(loss * mask, dim=-1) / torch.sum(mask, dim=-1)
     return scores
 
-def _S_to_seq(S):
+def _S_to_seq(S, mask):
     alphabet = 'ACDEFGHIKLMNPQRSTVWY'
-    seq = ''.join([alphabet[c] for c in S.tolist()])
+    seq = ''.join([alphabet[c] for c, m in zip(S.tolist(), mask.tolist()) if m > 0])
     return seq
 
 
@@ -129,7 +129,7 @@ with torch.no_grad():
         ali_file = base_folder + 'alignments/' + batch_clones[0]['name'] + '.fa'
         
         with open(ali_file, 'w') as f:
-            native_seq = _S_to_seq(S[0])
+            native_seq = _S_to_seq(S[0], mask[0])
             f.write('>Native, score={}\n{}\n'.format(native_score, native_seq))
             for temp in temperatures:
                 for j in range(NUM_BATCHES):
@@ -141,7 +141,7 @@ with torch.no_grad():
                     scores = scores.cpu().data.numpy()
 
                     for b_ix in range(BATCH_COPIES):
-                        seq = _S_to_seq(S_sample[b_ix])
+                        seq = _S_to_seq(S_sample[b_ix], mask[0])
                         score = scores[b_ix]
                         f.write('>T={}, sample={}, score={}\n{}\n'.format(temp,b_ix,score,seq))
 

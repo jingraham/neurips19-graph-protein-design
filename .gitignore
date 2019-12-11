@@ -1,6 +1,10 @@
 .DS_Store
 
 *.mmtf.gz
+*.pdf
+*.fa
+*.tsv
+*.txt
 *.pdb
 *.spin2
 
