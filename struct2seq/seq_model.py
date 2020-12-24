@@ -50,7 +50,7 @@ class SequenceModel(nn.Module):
         # Hyperparameters
         self.top_k = top_k
         self.hidden_dim = hidden_dim
-        self.positional_embeddings = PositionalEmbeddings(num_positional_embeddings)
+        self.positional_embeddings = PositionalEncodings(num_positional_embeddings)
 
         # Embedding layers
         self.W_e = nn.Linear(num_positional_embeddings, hidden_dim, bias=True)
@@ -58,7 +58,7 @@ class SequenceModel(nn.Module):
 
         # Decoder
         self.decoder_layers = nn.ModuleList([
-            GraphAttention(hidden_dim, hidden_dim*3)
+            TransformerLayer(hidden_dim, hidden_dim*3)
             for _ in range(2 * num_layers)
         ])
         self.W_out = nn.Linear(hidden_dim, num_letters, bias=True)
